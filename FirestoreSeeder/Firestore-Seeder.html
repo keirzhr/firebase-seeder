@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Excel to Firestore Seeder</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --accent: #3ecf8e;
+    --accent-dark: #2ea86f;
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --error: #ff6b6b;
+    --border: #2a2e37;
+    --input-bg: #0d1013;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px 16px 64px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; margin-bottom: 24px; font-size: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+  label:first-of-type { margin-top: 0; }
+  input[type="text"], input[type="password"], textarea {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px;
+  }
+  textarea { resize: vertical; line-height: 1.5; }
+  input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  #parseConfigBtn {
+    width: auto;
+    margin-top: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .file-drop {
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .file-drop:hover, .file-drop.dragover {
+    border-color: var(--accent);
+    background: rgba(62,207,142,0.05);
+  }
+  .file-drop p { margin: 4px 0; font-size: 13px; color: var(--muted); }
+  .file-drop p.filename { color: var(--text); font-weight: 600; }
+  #fileInput { display: none; }
+  .preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 14px;
+    font-size: 12.5px;
+  }
+  .preview-table th, .preview-table td {
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .preview-table th { color: var(--muted); font-weight: 600; }
+  .preview-table td.count { color: var(--accent); font-family: "SFMono-Regular", Consolas, monospace; }
+  .id-col-select {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 4px 6px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  button {
+    background: var(--accent);
+    color: #0a0f0d;
+    border: none;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 18px;
+    width: 100%;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { background: #3a3f4a; color: var(--muted); cursor: not-allowed; }
+  #log {
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.6;
+    height: 260px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .ok { color: var(--accent); }
+  .err { color: var(--error); }
+  .info { color: var(--muted); }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(62,207,142,0.15);
+    color: var(--accent);
+    margin-left: 8px;
+  }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Excel &rarr; Firestore Seeder <span class="badge">generic</span></h1>
+  <p class="sub">Paste your own Firebase config, upload any .xlsx workbook, and push each sheet into Firestore as a collection. Nothing is hardcoded &mdash; both the config and the data come from you at runtime.</p>
+
+  <div class="card">
+    <h2>1. Firebase config</h2>
+
+    <label for="configPaste">Paste your firebaseConfig snippet <span style="opacity:0.6">(optional shortcut)</span></label>
+    <textarea id="configPaste" rows="8" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;...&quot;,&#10;  authDomain: &quot;...&quot;,&#10;  projectId: &quot;...&quot;,&#10;  storageBucket: &quot;...&quot;,&#10;  messagingSenderId: &quot;...&quot;,&#10;  appId: &quot;...&quot;,&#10;  measurementId: &quot;...&quot;&#10;};"></textarea>
+    <button type="button" id="parseConfigBtn" style="margin-top:8px;">Parse &amp; fill fields below</button>
+    <p class="hint" id="parseConfigMsg"></p>
+
+    <div style="height:1px; background:var(--border); margin:18px 0;"></div>
+
+    <label for="apiKey">apiKey</label>
+    <input type="text" id="apiKey" placeholder="AIzaSy...">
+
+    <label for="authDomain">authDomain</label>
+    <input type="text" id="authDomain" placeholder="your-project.firebaseapp.com">
+
+    <div class="grid-2">
+      <div>
+        <label for="projectId">projectId</label>
+        <input type="text" id="projectId" placeholder="your-project-id">
+      </div>
+      <div>
+        <label for="storageBucket">storageBucket</label>
+        <input type="text" id="storageBucket" placeholder="your-project.firebasestorage.app">
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <label for="messagingSenderId">messagingSenderId</label>
+        <input type="text" id="messagingSenderId" placeholder="123456789012">
+      </div>
+      <div>
+        <label for="appId">appId</label>
+        <input type="text" id="appId" placeholder="1:123456789012:web:abcdef">
+      </div>
+    </div>
+
+    <label for="databaseURL">databaseURL <span style="opacity:0.6">(optional, only if using Realtime DB alongside Firestore)</span></label>
+    <input type="text" id="databaseURL" placeholder="https://your-project-default-rtdb.firebaseio.com">
+
+    <label for="measurementId">measurementId <span style="opacity:0.6">(optional)</span></label>
+    <input type="text" id="measurementId" placeholder="G-XXXXXXXXXX">
+
+    <p class="hint">Find these under Project settings &rarr; General &rarr; Your apps &rarr; SDK setup and configuration, in your Firebase console.</p>
+  </div>
+
+  <div class="card">
+    <h2>2. Upload Excel workbook</h2>
+    <div class="file-drop" id="fileDrop">
+      <p class="filename" id="fileName">Click to choose a file, or drag one here</p>
+      <p>.xlsx or .xls &mdash; each sheet becomes a Firestore collection</p>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <table class="preview-table" id="previewTable" style="display:none;">
+      <thead>
+        <tr><th>Sheet (&rarr; collection)</th><th>Rows</th><th>Document ID column</th></tr>
+      </thead>
+      <tbody id="previewBody"></tbody>
+    </table>
+    <p class="hint" id="previewHint" style="display:none;">Pick which column to use as each document's ID (usually the *_id column). Choose "Auto-generate" to let Firestore assign random IDs.</p>
+  </div>
+
+  <div class="card">
+    <h2>3. Seed Firestore</h2>
+    <button id="seedBtn" disabled>Select a file first</button>
+    <div id="log" style="margin-top:16px;"><span class="info">Fill in your Firebase config, upload a workbook, then click the button above.</span></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getFirestore, collection, doc, setDoc, addDoc, Timestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const logEl = document.getElementById("log");
+  const seedBtn = document.getElementById("seedBtn");
+  const fileInput = document.getElementById("fileInput");
+  const fileDrop = document.getElementById("fileDrop");
+  const fileNameEl = document.getElementById("fileName");
+  const previewTable = document.getElementById("previewTable");
+  const previewBody = document.getElementById("previewBody");
+  const previewHint = document.getElementById("previewHint");
+
+  let parsedSheets = null; // { sheetName: { rows: [...], idColumn: "col_name" | "__auto__" } }
+
+  function log(msg, cls = "info") {
+    const line = document.createElement("div");
+    line.className = cls;
+    line.textContent = msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function clearLog() {
+    logEl.innerHTML = "";
+  }
+
+  function guessIdColumn(columns, sheetName) {
+    const lowerCols = columns.map(c => c.toLowerCase());
+    // Exact "id"
+    let idx = lowerCols.indexOf("id");
+    if (idx !== -1) return columns[idx];
+    // Column ending in "_id" that also relates to the sheet name (e.g. customer_id in Customers)
+    const singular = sheetName.toLowerCase().replace(/s$/, "");
+    idx = lowerCols.findIndex(c => c === `${singular}_id` || c === `${sheetName.toLowerCase()}_id`);
+    if (idx !== -1) return columns[idx];
+    // Any column ending in "_id" as first choice
+    idx = lowerCols.findIndex(c => c.endsWith("_id"));
+    if (idx !== -1) return columns[idx];
+    return "__auto__";
+  }
+
+  const configPaste = document.getElementById("configPaste");
+  const parseConfigBtn = document.getElementById("parseConfigBtn");
+  const parseConfigMsg = document.getElementById("parseConfigMsg");
+
+  const CONFIG_FIELDS = ["apiKey", "authDomain", "databaseURL", "projectId", "storageBucket", "messagingSenderId", "appId", "measurementId"];
+
+  function extractConfigObject(text) {
+    // Grab the first {...} block in the pasted text, so it works whether the
+    // user pastes just the object, or the full "const firebaseConfig = {...};" line.
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start === -1 || end === -1 || end < start) {
+      throw new Error("Couldn't find a { ... } object in the pasted text.");
+    }
+    const snippet = text.slice(start, end + 1);
+    // Safe-ish local eval: this only ever runs in the user's own browser on
+    // their own pasted text, purely to turn the JS object literal into data.
+    // eslint-disable-next-line no-new-func
+    const obj = Function('"use strict"; return (' + snippet + ');')();
+    if (typeof obj !== "object" || obj === null) {
+      throw new Error("Pasted text did not evaluate to an object.");
+    }
+    return obj;
+  }
+
+  parseConfigBtn.addEventListener("click", () => {
+    try {
+      const obj = extractConfigObject(configPaste.value);
+      let filled = 0;
+      CONFIG_FIELDS.forEach((key) => {
+        if (obj[key] != null) {
+          document.getElementById(key).value = String(obj[key]);
+          filled++;
+        }
+      });
+      parseConfigMsg.textContent = `✓ Filled ${filled} field(s) from pasted config.`;
+      parseConfigMsg.style.color = "var(--accent)";
+    } catch (err) {
+      parseConfigMsg.textContent = "Couldn't parse that: " + (err && err.message ? err.message : err);
+      parseConfigMsg.style.color = "var(--error)";
+    }
+  });
+
+  fileDrop.addEventListener("click", () => fileInput.click());
+  fileDrop.addEventListener("dragover", (e) => { e.preventDefault(); fileDrop.classList.add("dragover"); });
+  fileDrop.addEventListener("dragleave", () => fileDrop.classList.remove("dragover"));
+  fileDrop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    fileDrop.classList.remove("dragover");
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file) {
+    fileNameEl.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: "array", cellDates: true });
+
+        parsedSheets = {};
+        previewBody.innerHTML = "";
+
+        wb.SheetNames.forEach((sheetName) => {
+          const ws = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+          if (!rows.length) return;
+
+          const columns = Object.keys(rows[0]);
+          const guessedId = guessIdColumn(columns, sheetName);
+          parsedSheets[sheetName] = { rows, idColumn: guessedId };
+
+          const tr = document.createElement("tr");
+
+          const tdName = document.createElement("td");
+          tdName.textContent = sheetName;
+          tr.appendChild(tdName);
+
+          const tdCount = document.createElement("td");
+          tdCount.className = "count";
+          tdCount.textContent = rows.length;
+          tr.appendChild(tdCount);
+
+          const tdSelect = document.createElement("td");
+          const select = document.createElement("select");
+          select.className = "id-col-select";
+          const autoOpt = document.createElement("option");
+          autoOpt.value = "__auto__";
+          autoOpt.textContent = "Auto-generate";
+          select.appendChild(autoOpt);
+          columns.forEach((col) => {
+            const opt = document.createElement("option");
+            opt.value = col;
+            opt.textContent = col;
+            if (col === guessedId) opt.selected = true;
+            select.appendChild(opt);
+          });
+          select.addEventListener("change", () => {
+            parsedSheets[sheetName].idColumn = select.value;
+          });
+          tdSelect.appendChild(select);
+          tr.appendChild(tdSelect);
+
+          previewBody.appendChild(tr);
+        });
+
+        previewTable.style.display = "table";
+        previewHint.style.display = "block";
+        seedBtn.disabled = false;
+        seedBtn.textContent = "Send workbook to Firestore";
+        clearLog();
+        log(`Parsed ${wb.SheetNames.length} sheet(s) from ${file.name}.`, "ok");
+      } catch (err) {
+        clearLog();
+        log("Failed to parse workbook: " + (err && err.message ? err.message : err), "err");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function readConfigFromForm() {
+    const get = (id) => document.getElementById(id).value.trim();
+    const config = {
+      apiKey: get("apiKey"),
+      authDomain: get("authDomain"),
+      projectId: get("projectId"),
+      storageBucket: get("storageBucket"),
+      messagingSenderId: get("messagingSenderId"),
+      appId: get("appId"),
+    };
+    const databaseURL = get("databaseURL");
+    const measurementId = get("measurementId");
+    if (databaseURL) config.databaseURL = databaseURL;
+    if (measurementId) config.measurementId = measurementId;
+
+    const missing = ["apiKey", "authDomain", "projectId", "storageBucket", "messagingSenderId", "appId"]
+      .filter((k) => !config[k]);
+    if (missing.length) {
+      throw new Error("Missing required config field(s): " + missing.join(", "));
+    }
+    return config;
+  }
+
+  function toFirestoreValue(v) {
+    if (v instanceof Date) return Timestamp.fromDate(v);
+    return v;
+  }
+
+  function toFirestoreDoc(row, idColumn) {
+    const out = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (idColumn !== "__auto__" && k === idColumn) continue; // don't duplicate the id as a field
+      out[k] = toFirestoreValue(v);
+    }
+    return out;
+  }
+
+  seedBtn.addEventListener("click", async () => {
+    if (!parsedSheets) return;
+
+    clearLog();
+    seedBtn.disabled = true;
+    seedBtn.textContent = "Seeding...";
+
+    try {
+      const config = readConfigFromForm();
+      log("Initializing Firebase app...");
+      const app = initializeApp(config);
+      const db = getFirestore(app);
+      log("Connected. Writing documents...", "info");
+
+      for (const [sheetName, { rows, idColumn }] of Object.entries(parsedSheets)) {
+        log(`→ ${sheetName} (${rows.length} row${rows.length === 1 ? "" : "s"})`);
+        for (const row of rows) {
+          const docData = toFirestoreDoc(row, idColumn);
+          if (idColumn !== "__auto__" && row[idColumn] != null) {
+            const ref = doc(collection(db, sheetName), String(row[idColumn]));
+            await setDoc(ref, docData);
+            log(`  ✓ ${sheetName}/${row[idColumn]}`, "ok");
+          } else {
+            const ref = await addDoc(collection(db, sheetName), docData);
+            log(`  ✓ ${sheetName}/${ref.id} (auto-id)`, "ok");
+          }
+        }
+      }
+
+      log("All sheets written successfully.", "ok");
+    } catch (err) {
+      log("Error: " + (err && err.message ? err.message : err), "err");
+    } finally {
+      seedBtn.disabled = false;
+      seedBtn.textContent = "Send workbook to Firestore";
+    }
+  });
+</script>
+</body>
+</html>
